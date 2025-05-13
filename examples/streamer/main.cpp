@@ -14,12 +14,11 @@
  */
 
 #include "nlohmann/json.hpp"
-#include "UdpH264Source.hpp"
 
 #include "h264fileparser.hpp"
-#include "opusfileparser.hpp"
 #include "helpers.hpp"
 #include "ArgParser.hpp"
+#include "UdpH264Source.hpp"
 
 #include <chrono>
 
@@ -46,9 +45,8 @@ shared_ptr<Client> createPeerConnection(const Configuration &config,
 /// Creates stream
 /// @param h264Samples Directory with H264 samples
 /// @param fps Video FPS
-/// @param opusSamples Directory with opus samples
 /// @returns Stream object
-shared_ptr<Stream> createStream(const string h264Samples, const unsigned fps, const string opusSamples);
+shared_ptr<Stream> createStream(const string h264Samples, const unsigned fps);
 
 /// Add client to stream
 /// @param client Client
@@ -67,13 +65,11 @@ optional<shared_ptr<Stream>> avStream = nullopt;
 const string defaultRootDirectory = "../../../examples/streamer/samples/";
 const string defaultH264SamplesDirectory = defaultRootDirectory + "h264/";
 string h264SamplesDirectory = defaultH264SamplesDirectory;
-const string defaultOpusSamplesDirectory = defaultRootDirectory + "opus/";
-string opusSamplesDirectory = defaultOpusSamplesDirectory;
+string h264InputUri = "";
 const string defaultIPAddress = "127.0.0.1";
 const uint16_t defaultPort = 8000;
 string ip_address = defaultIPAddress;
 uint16_t port = defaultPort;
-string h264InputUri = "";
 
 /// Incomming message handler for websocket
 /// @param message Incommint message
@@ -106,21 +102,14 @@ int main(int argc, char **argv) try {
     bool enableDebugLogs = false;
     bool printHelp = false;
     int c = 0;
-    auto parser = ArgParser({{"a", "audio"}, {"b", "video"}, {"d", "ip"}, {"p","port"}}, {{"h", "help"}, {"v", "verbose"}});
+    auto parser = ArgParser({{"b", "video"}, {"d", "ip"}, {"p","port"}}, {{"h", "help"}, {"v", "verbose"}}); // Removed audio option
     auto parsingResult = parser.parse(argc, argv, [](string key, string value) {
-<<<<<<< Updated upstream
-        if (key == "audio") {
-            opusSamplesDirectory = value + "/";
-        } else if (key == "video") {
-            h264SamplesDirectory = value + "/";
-=======
         if (key == "video") {
             if (value.rfind("udp://", 0) == 0) {
                 h264InputUri = value;
             } else {
                 h264SamplesDirectory = value + "/";
             }
->>>>>>> Stashed changes
         } else if (key == "ip") {
             ip_address = value;
         } else if (key == "port") {
@@ -146,9 +135,8 @@ int main(int argc, char **argv) try {
     }
 
     if (printHelp) {
-        cout << "usage: stream-h264 [-a opus_samples_folder] [-b h264_samples_folder] [-d ip_address] [-p port] [-v] [-h]" << endl
+        cout << "usage: stream-h264 [-b h264_samples_folder] [-d ip_address] [-p port] [-v] [-h]" << endl // Removed audio option from help
         << "Arguments:" << endl
-        << "\t -a " << "Directory with opus samples (default: " << defaultOpusSamplesDirectory << ")." << endl
         << "\t -b " << "Directory with H264 samples (default: " << defaultH264SamplesDirectory << ")." << endl
         << "\t -d " << "Signaling server IP address (default: " << defaultIPAddress << ")." << endl
         << "\t -p " << "Signaling server port (default: " << defaultPort << ")." << endl
@@ -237,28 +225,6 @@ shared_ptr<ClientTrackData> addVideo(const shared_ptr<PeerConnection> pc, const 
     return trackData;
 }
 
-shared_ptr<ClientTrackData> addAudio(const shared_ptr<PeerConnection> pc, const uint8_t payloadType, const uint32_t ssrc, const string cname, const string msid, const function<void (void)> onOpen) {
-    auto audio = Description::Audio(cname);
-    audio.addOpusCodec(payloadType);
-    audio.addSSRC(ssrc, cname, msid, cname);
-    auto track = pc->addTrack(audio);
-    // create RTP configuration
-    auto rtpConfig = make_shared<RtpPacketizationConfig>(ssrc, cname, payloadType, OpusRtpPacketizer::DefaultClockRate);
-    // create packetizer
-    auto packetizer = make_shared<OpusRtpPacketizer>(rtpConfig);
-    // add RTCP SR handler
-    auto srReporter = make_shared<RtcpSrReporter>(rtpConfig);
-    packetizer->addToChain(srReporter);
-    // add RTCP NACK handler
-    auto nackResponder = make_shared<RtcpNackResponder>();
-    packetizer->addToChain(nackResponder);
-    // set handler
-    track->setMediaHandler(packetizer);
-    track->onOpen(onOpen);
-    auto trackData = make_shared<ClientTrackData>(track, srReporter);
-    return trackData;
-}
-
 // Create and setup a PeerConnection
 shared_ptr<Client> createPeerConnection(const Configuration &config,
                                                 weak_ptr<WebSocket> wws,
@@ -306,15 +272,6 @@ shared_ptr<Client> createPeerConnection(const Configuration &config,
         cout << "Video from " << id << " opened" << endl;
     });
 
-    client->audio = addAudio(pc, 111, 2, "audio-stream", "stream1", [id, wc = make_weak_ptr(client)]() {
-        MainThread.dispatch([wc]() {
-            if (auto c = wc.lock()) {
-                addToStream(c, false);
-            }
-        });
-        cout << "Audio from " << id << " opened" << endl;
-    });
-
     auto dc = pc->createDataChannel("ping-pong");
     dc->onOpen([id, wdc = make_weak_ptr(dc)]() {
         if (auto dc = wdc.lock()) {
@@ -335,15 +292,6 @@ shared_ptr<Client> createPeerConnection(const Configuration &config,
 };
 
 /// Create stream
-<<<<<<< Updated upstream
-shared_ptr<Stream> createStream(const string h264Samples, const unsigned fps, const string opusSamples) {
-    // video source
-    auto video = make_shared<H264FileParser>(h264Samples, fps, true);
-    // audio source
-    auto audio = make_shared<OPUSFileParser>(opusSamples, true);
-
-    auto stream = make_shared<Stream>(video, audio);
-=======
 shared_ptr<Stream> createStream(const string h264Samples, const unsigned fps) { // Removed opusSamples argument
     shared_ptr<StreamSource> video;
     if (!h264InputUri.empty() && h264InputUri.rfind("udp://", 0) == 0) {
@@ -358,14 +306,15 @@ shared_ptr<Stream> createStream(const string h264Samples, const unsigned fps) { 
         video = make_shared<H264FileParser>(h264Samples, fps, true);
     }
     auto stream = make_shared<Stream>(video);
->>>>>>> Stashed changes
     // set callback responsible for sample sending
     stream->onSample([ws = make_weak_ptr(stream)](Stream::StreamSourceType type, uint64_t sampleTime, rtc::binary sample) {
         vector<ClientTrack> tracks{};
-        string streamType = type == Stream::StreamSourceType::Video ? "video" : "audio";
+        string streamType = "video"; // Audio is removed, so type is always video
+        assert(type == Stream::StreamSourceType::Video);
+
         // get track for given type
-        function<optional<shared_ptr<ClientTrackData>> (shared_ptr<Client>)> getTrackData = [type](shared_ptr<Client> client) {
-            return type == Stream::StreamSourceType::Video ? client->video : client->audio;
+        function<optional<shared_ptr<ClientTrackData>> (shared_ptr<Client>)> getTrackData = [](shared_ptr<Client> client) {
+            return client->video;
         };
         // get all clients with Ready state
         for(auto id_client: clients) {
@@ -413,7 +362,7 @@ void startStream() {
             return;
         }
     } else {
-        stream = createStream(h264SamplesDirectory, 30, opusSamplesDirectory);
+        stream = createStream(h264SamplesDirectory, 30);
         avStream = stream;
     }
     stream->start();
@@ -423,33 +372,18 @@ void startStream() {
 /// @param stream Stream
 /// @param video Video track data
 void sendInitialNalus(shared_ptr<Stream> stream, shared_ptr<ClientTrackData> video) {
-    // Try H264FileParser first
     auto h264 = dynamic_cast<H264FileParser *>(stream->video.get());
-    if (h264) {
-        auto initialNalus = h264->initialNALUS();
-        if (!initialNalus.empty()) {
-            const double frameDuration_s = double(h264->getSampleDuration_us()) / (1000 * 1000);
-            const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
-            video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
-            video->track->send(initialNalus);
-            video->sender->rtpConfig->timestamp += frameTimestampDuration;
-            video->track->send(initialNalus);
-        }
-        return;
-    }
-    // If not H264FileParser, try UdpH264Source
-    auto udp = dynamic_cast<UdpH264Source *>(stream->video.get());
-    if (udp) {
-        auto initialNalus = udp->getInitialNALUs();
-        if (!initialNalus.empty()) {
-            // Use a default frame duration for UDP
-            const double frameDuration_s = 1.0 / 30.0;
-            const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
-            video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
-            video->track->send(initialNalus);
-            video->sender->rtpConfig->timestamp += frameTimestampDuration;
-            video->track->send(initialNalus);
-        }
+    auto initialNalus = h264->initialNALUS();
+
+    // send previous NALU key frame so users don't have to wait to see stream works
+    if (!initialNalus.empty()) {
+        const double frameDuration_s = double(h264->getSampleDuration_us()) / (1000 * 1000);
+        const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
+        video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
+        video->track->send(initialNalus);
+        video->sender->rtpConfig->timestamp += frameTimestampDuration;
+        // Send initial NAL units again to start stream in firefox browser
+        video->track->send(initialNalus);
     }
 }
 
@@ -457,21 +391,17 @@ void sendInitialNalus(shared_ptr<Stream> stream, shared_ptr<ClientTrackData> vid
 /// @param client Client
 /// @param adding_video True if adding video
 void addToStream(shared_ptr<Client> client, bool isAddingVideo) {
-    if (client->getState() == Client::State::Waiting) {
-        client->setState(isAddingVideo ? Client::State::WaitingForAudio : Client::State::WaitingForVideo);
-    } else if ((client->getState() == Client::State::WaitingForAudio && !isAddingVideo)
-               || (client->getState() == Client::State::WaitingForVideo && isAddingVideo)) {
+    if (!isAddingVideo) return;
 
-        // Audio and video tracks are collected now
-        assert(client->video.has_value() && client->audio.has_value());
-        auto video = client->video.value();
+    assert(client->video.has_value());
+    auto video = client->video.value();
 
-        if (avStream.has_value()) {
-            sendInitialNalus(avStream.value(), video);
-        }
-
-        client->setState(Client::State::Ready);
+    if (avStream.has_value()) {
+        sendInitialNalus(avStream.value(), video);
     }
+
+    client->setState(Client::State::Ready);
+
     if (client->getState() == Client::State::Ready) {
         startStream();
     }

@@ -33,10 +33,9 @@ class Stream: public std::enable_shared_from_this<Stream> {
 
     bool _isRunning = false;
 public:
-    const std::shared_ptr<StreamSource> audio;
     const std::shared_ptr<StreamSource> video;
 
-    Stream(std::shared_ptr<StreamSource> video, std::shared_ptr<StreamSource> audio);
+    Stream(std::shared_ptr<StreamSource> video);
     ~Stream();
 
     enum class StreamSourceType {

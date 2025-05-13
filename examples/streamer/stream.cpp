@@ -30,8 +30,8 @@ void usleep(__int64 usec)
 #include <unistd.h>
 #endif
 
-Stream::Stream(std::shared_ptr<StreamSource> video, std::shared_ptr<StreamSource> audio):
-	std::enable_shared_from_this<Stream>(), video(video), audio(audio) { }
+Stream::Stream(std::shared_ptr<StreamSource> video):
+	std::enable_shared_from_this<Stream>(), video(video) { }
 
 Stream::~Stream() {
     stop();
@@ -41,15 +41,9 @@ std::pair<std::shared_ptr<StreamSource>, Stream::StreamSourceType> Stream::unsaf
     std::shared_ptr<StreamSource> ss;
     StreamSourceType sst;
     uint64_t nextTime;
-    if (audio->getSampleTime_us() < video->getSampleTime_us()) {
-        ss = audio;
-        sst = StreamSourceType::Audio;
-        nextTime = audio->getSampleTime_us();
-    } else {
-        ss = video;
-        sst = StreamSourceType::Video;
-        nextTime = video->getSampleTime_us();
-    }
+    ss = video;
+    sst = StreamSourceType::Video;
+    nextTime = video->getSampleTime_us();
 
     auto currentTime = currentTimeInMicroSeconds();
 
@@ -98,7 +92,6 @@ void Stream::start() {
     }
     _isRunning = true;
     startTime = currentTimeInMicroSeconds();
-    audio->start();
     video->start();
     dispatchQueue.dispatch([this]() {
         this->sendSample();
@@ -112,7 +105,6 @@ void Stream::stop() {
     }
     _isRunning = false;
     dispatchQueue.removePending();
-    audio->stop();
     video->stop();
 };
 

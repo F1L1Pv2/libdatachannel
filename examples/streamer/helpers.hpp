@@ -24,8 +24,6 @@ struct ClientTrackData {
 struct Client {
     enum class State {
         Waiting,
-        WaitingForVideo,
-        WaitingForAudio,
         Ready
     };
     const std::shared_ptr<rtc::PeerConnection> & peerConnection = _peerConnection;
@@ -33,7 +31,6 @@ struct Client {
         _peerConnection = pc;
     }
     std::optional<std::shared_ptr<ClientTrackData>> video;
-    std::optional<std::shared_ptr<ClientTrackData>> audio;
     std::optional<std::shared_ptr<rtc::DataChannel>> dataChannel;
 
     void setState(State state);
