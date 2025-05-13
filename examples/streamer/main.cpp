@@ -14,6 +14,7 @@
  */
 
 #include "nlohmann/json.hpp"
+#include "UdpH264Source.hpp"
 
 #include "h264fileparser.hpp"
 #include "opusfileparser.hpp"
@@ -72,6 +73,7 @@ const string defaultIPAddress = "127.0.0.1";
 const uint16_t defaultPort = 8000;
 string ip_address = defaultIPAddress;
 uint16_t port = defaultPort;
+string h264InputUri = "";
 
 /// Incomming message handler for websocket
 /// @param message Incommint message
@@ -106,10 +108,19 @@ int main(int argc, char **argv) try {
     int c = 0;
     auto parser = ArgParser({{"a", "audio"}, {"b", "video"}, {"d", "ip"}, {"p","port"}}, {{"h", "help"}, {"v", "verbose"}});
     auto parsingResult = parser.parse(argc, argv, [](string key, string value) {
+<<<<<<< Updated upstream
         if (key == "audio") {
             opusSamplesDirectory = value + "/";
         } else if (key == "video") {
             h264SamplesDirectory = value + "/";
+=======
+        if (key == "video") {
+            if (value.rfind("udp://", 0) == 0) {
+                h264InputUri = value;
+            } else {
+                h264SamplesDirectory = value + "/";
+            }
+>>>>>>> Stashed changes
         } else if (key == "ip") {
             ip_address = value;
         } else if (key == "port") {
@@ -324,6 +335,7 @@ shared_ptr<Client> createPeerConnection(const Configuration &config,
 };
 
 /// Create stream
+<<<<<<< Updated upstream
 shared_ptr<Stream> createStream(const string h264Samples, const unsigned fps, const string opusSamples) {
     // video source
     auto video = make_shared<H264FileParser>(h264Samples, fps, true);
@@ -331,6 +343,22 @@ shared_ptr<Stream> createStream(const string h264Samples, const unsigned fps, co
     auto audio = make_shared<OPUSFileParser>(opusSamples, true);
 
     auto stream = make_shared<Stream>(video, audio);
+=======
+shared_ptr<Stream> createStream(const string h264Samples, const unsigned fps) { // Removed opusSamples argument
+    shared_ptr<StreamSource> video;
+    if (!h264InputUri.empty() && h264InputUri.rfind("udp://", 0) == 0) {
+        // Parse port from udp://:PORT
+        size_t pos = h264InputUri.find_last_of(":");
+        uint16_t udpPort = 5000;
+        if (pos != string::npos) {
+            udpPort = static_cast<uint16_t>(stoi(h264InputUri.substr(pos + 1)));
+        }
+        video = make_shared<UdpH264Source>(udpPort);
+    } else {
+        video = make_shared<H264FileParser>(h264Samples, fps, true);
+    }
+    auto stream = make_shared<Stream>(video);
+>>>>>>> Stashed changes
     // set callback responsible for sample sending
     stream->onSample([ws = make_weak_ptr(stream)](Stream::StreamSourceType type, uint64_t sampleTime, rtc::binary sample) {
         vector<ClientTrack> tracks{};
@@ -395,18 +423,33 @@ void startStream() {
 /// @param stream Stream
 /// @param video Video track data
 void sendInitialNalus(shared_ptr<Stream> stream, shared_ptr<ClientTrackData> video) {
+    // Try H264FileParser first
     auto h264 = dynamic_cast<H264FileParser *>(stream->video.get());
-    auto initialNalus = h264->initialNALUS();
-
-    // send previous NALU key frame so users don't have to wait to see stream works
-    if (!initialNalus.empty()) {
-        const double frameDuration_s = double(h264->getSampleDuration_us()) / (1000 * 1000);
-        const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
-        video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
-        video->track->send(initialNalus);
-        video->sender->rtpConfig->timestamp += frameTimestampDuration;
-        // Send initial NAL units again to start stream in firefox browser
-        video->track->send(initialNalus);
+    if (h264) {
+        auto initialNalus = h264->initialNALUS();
+        if (!initialNalus.empty()) {
+            const double frameDuration_s = double(h264->getSampleDuration_us()) / (1000 * 1000);
+            const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
+            video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
+            video->track->send(initialNalus);
+            video->sender->rtpConfig->timestamp += frameTimestampDuration;
+            video->track->send(initialNalus);
+        }
+        return;
+    }
+    // If not H264FileParser, try UdpH264Source
+    auto udp = dynamic_cast<UdpH264Source *>(stream->video.get());
+    if (udp) {
+        auto initialNalus = udp->getInitialNALUs();
+        if (!initialNalus.empty()) {
+            // Use a default frame duration for UDP
+            const double frameDuration_s = 1.0 / 30.0;
+            const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
+            video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
+            video->track->send(initialNalus);
+            video->sender->rtpConfig->timestamp += frameTimestampDuration;
+            video->track->send(initialNalus);
+        }
     }
 }
 

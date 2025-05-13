@@ -72,6 +72,14 @@ void Stream::sendSample() {
     auto ss = ssSST.first;
     auto sst = ssSST.second;
     auto sample = ss->getSample();
+    if (sample.empty()) {
+        // Don't send empty samples to the RTP packetizer!
+        ss->loadNextSample();
+        dispatchQueue.dispatch([this]() {
+            this->sendSample();
+        });
+        return;
+    }
     sampleHandler(sst, ss->getSampleTime_us(), sample);
     ss->loadNextSample();
     dispatchQueue.dispatch([this]() {

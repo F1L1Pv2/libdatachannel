@@ -9,6 +9,8 @@ set(STREAMER_SOURCES
 	dispatchqueue.hpp
 	h264fileparser.cpp
 	h264fileparser.hpp
+	UdpH264Source.cpp
+	UdpH264Source.hpp
 	helpers.cpp
 	helpers.hpp
 	opusfileparser.cpp
