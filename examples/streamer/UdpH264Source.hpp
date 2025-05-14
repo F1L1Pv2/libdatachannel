@@ -37,6 +37,4 @@ public:
     rtc::binary getSample() override;
     uint64_t getSampleTime_us() override;
     uint64_t getSampleDuration_us() override;
-    // Returns a buffer containing SPS, PPS, and IDR (if available)
-    rtc::binary getInitialNALUs();
 };

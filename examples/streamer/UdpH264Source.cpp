@@ -198,28 +198,3 @@ uint64_t UdpH264Source::getSampleTime_us() {
 uint64_t UdpH264Source::getSampleDuration_us() {
     return sampleDuration_us;
 }
-
-// Returns a buffer containing SPS, PPS, and IDR (if available), all as length-prefixed NALUs
-rtc::binary UdpH264Source::getInitialNALUs() {
-    std::lock_guard<std::mutex> lock(nalus_mtx);
-    rtc::binary out;
-    auto appendLengthPrefixed = [&](const rtc::binary& nalu) {
-        if (nalu.empty()) return;
-        // Find start code length
-        size_t offset = 0;
-        if (nalu.size() >= 4 && nalu[0] == std::byte{0x00} && nalu[1] == std::byte{0x00} && nalu[2] == std::byte{0x00} && nalu[3] == std::byte{0x01}) {
-            offset = 4;
-        } else if (nalu.size() >= 3 && nalu[0] == std::byte{0x00} && nalu[1] == std::byte{0x00} && nalu[2] == std::byte{0x01}) {
-            offset = 3;
-        }
-        size_t naluSize = nalu.size() - offset;
-        uint32_t len = htonl(static_cast<uint32_t>(naluSize));
-        std::byte* lenBytes = reinterpret_cast<std::byte*>(&len);
-        out.insert(out.end(), lenBytes, lenBytes + 4);
-        out.insert(out.end(), nalu.begin() + offset, nalu.end());
-    };
-    appendLengthPrefixed(latestSPS);
-    appendLengthPrefixed(latestPPS);
-    appendLengthPrefixed(latestIDR);
-    return out;
-}
