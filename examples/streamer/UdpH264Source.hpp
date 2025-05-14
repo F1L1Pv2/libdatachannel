@@ -1,35 +1,26 @@
 // UdpH264Source.hpp
 // StreamSource implementation for receiving H264 over UDP
+// Improvements: Increased UDP receive buffer, added debug logging for packet arrival and timing.
 #pragma once
 #include "stream.hpp"
-#include <thread>
 #include <atomic>
-#include <queue>
-#include <mutex>
-#include <condition_variable>
 #include <netinet/in.h>
+#include <thread>
+#include "concurrentqueue.h"
 
 class UdpH264Source : public StreamSource {
     int sockfd;
-    std::thread recvThread;
     std::atomic<bool> running{false};
-    std::queue<rtc::binary> samples;
-    std::mutex mtx;
-    std::condition_variable cv;
+    moodycamel::ConcurrentQueue<rtc::binary> samples;
     uint16_t port;
     uint64_t sampleTime_us = 0;
-    uint64_t sampleDuration_us = 33333; // ~30fps by default
+    uint64_t sampleDuration_us;
     rtc::binary currentSample;
 
-    // Buffer for latest SPS, PPS, and IDR NALUs
-    rtc::binary latestSPS;
-    rtc::binary latestPPS;
-    rtc::binary latestIDR;
-    std::mutex nalus_mtx;
-
+    std::thread recvThread;
     void receiveLoop();
 public:
-    UdpH264Source(uint16_t port);
+    UdpH264Source(uint16_t port, uint32_t fps = 15);
     ~UdpH264Source();
     void start() override;
     void stop() override;

@@ -206,12 +206,13 @@ int main(int argc, char **argv) try {
 shared_ptr<ClientTrackData> addVideo(const shared_ptr<PeerConnection> pc, const uint8_t payloadType, const uint32_t ssrc, const string cname, const string msid, const function<void (void)> onOpen) {
     auto video = Description::Video(cname);
     video.addH264Codec(payloadType);
+    // video.setBitrate(500); // Set bitrate to 2500 kbps for better quality
     video.addSSRC(ssrc, cname, msid, cname);
     auto track = pc->addTrack(video);
     // create RTP configuration
     auto rtpConfig = make_shared<RtpPacketizationConfig>(ssrc, cname, payloadType, H264RtpPacketizer::ClockRate);
-    // create packetizer
-    auto packetizer = make_shared<H264RtpPacketizer>(NalUnit::Separator::Length, rtpConfig);
+    // create packetizer with correct separator for browsers (Annex B start code)
+    auto packetizer = make_shared<H264RtpPacketizer>(NalUnit::Separator::StartSequence, rtpConfig);
     // add RTCP SR handler
     auto srReporter = make_shared<RtcpSrReporter>(rtpConfig);
     packetizer->addToChain(srReporter);
@@ -362,29 +363,10 @@ void startStream() {
             return;
         }
     } else {
-        stream = createStream(h264SamplesDirectory, 30);
+        stream = createStream(h264SamplesDirectory, 15);
         avStream = stream;
     }
     stream->start();
-}
-
-/// Send previous key frame so browser can show something to user
-/// @param stream Stream
-/// @param video Video track data
-void sendInitialNalus(shared_ptr<Stream> stream, shared_ptr<ClientTrackData> video) {
-    auto h264 = dynamic_cast<H264FileParser *>(stream->video.get());
-    auto initialNalus = h264->initialNALUS();
-
-    // send previous NALU key frame so users don't have to wait to see stream works
-    if (!initialNalus.empty()) {
-        const double frameDuration_s = double(h264->getSampleDuration_us()) / (1000 * 1000);
-        const uint32_t frameTimestampDuration = video->sender->rtpConfig->secondsToTimestamp(frameDuration_s);
-        video->sender->rtpConfig->timestamp = video->sender->rtpConfig->startTimestamp - frameTimestampDuration * 2;
-        video->track->send(initialNalus);
-        video->sender->rtpConfig->timestamp += frameTimestampDuration;
-        // Send initial NAL units again to start stream in firefox browser
-        video->track->send(initialNalus);
-    }
 }
 
 /// Add client to stream
@@ -395,10 +377,6 @@ void addToStream(shared_ptr<Client> client, bool isAddingVideo) {
 
     assert(client->video.has_value());
     auto video = client->video.value();
-
-    if (avStream.has_value()) {
-        sendInitialNalus(avStream.value(), video);
-    }
 
     client->setState(Client::State::Ready);
 
